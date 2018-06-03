@@ -8,18 +8,26 @@ USAGE:
 
 extended_usage=
     --help, -h              : Displays command usage.
+    
 
     --read, -r <pcap file>  :  Load a pcap file
     
+    
     --mix, -m               : Combine/mix the two-way voice into one wav file
     
+    
     --path, -p              : Move the generated wav files to this path
+    
 
 EXAMPLES:
     pcap2wav --help
+    
     pcap2wav -r SIP_call_with_RTP_in_G711.pcap
+    
     pcap2wav -r SIP_call_with_RTP_in_G711.pcap -p /root/wav
+    
     pcap2wav -r SIP_call_with_RTP_in_G711.pcap -p /root/wav --mix
+    
         
 Dependencies:
    apt-get install -y tshark sox
