@@ -1,0 +1,165 @@
+#------------------------------------------------------------------------
+#--- pcap2wav
+#---
+#--- Usage:  Accepts arg of pcap file w/only 2 RTP streams 
+#---             Creates a .<codec> file and a .wav file
+#---
+#--- Issue Notes:
+#--- version 1:  20180603 Shane Wang developed the base functionalities
+#------------------------------------------------------------------------
+
+# Define the help info
+help_info="DESCRIPTION:
+pcap2wav is a simple utility to make it easier to extract the audio from a pcap.
+The outputs are named by the SSRC.
+  
+USAGE:
+    pcap2wav [ -h|--help ]
+    pcap2wav -r|--read <pcap file> [-m|--mix] [-p|--path]
+
+extended_usage=
+    --help, -h              : Displays command usage.
+
+    --read, -r <pcap file>  :  Load a pcap file
+    
+    --mix, -m               : Combine/mix the two-way voice into one wav file
+    
+    --path, -p              : Move the generated wav files to this path
+
+EXAMPLES:
+    pcap2wav --help
+    pcap2wav -r SIP_call_with_RTP_in_G711.pcap
+    pcap2wav -r SIP_call_with_RTP_in_G711.pcap -p /root/wav
+    pcap2wav -r SIP_call_with_RTP_in_G711.pcap -p /root/wav --mix
+        
+Dependencies:
+   apt-get install -y tshark sox
+   yum install wireshark sox
+"
+
+# Check the dependencies
+if [[ `which tshark 2>/dev/null` == "" || `which sox 2>/dev/null` == "" ]]; then {
+    echo "No tshark or sox.
+   apt-get install -y tshark sox
+   yum install wireshark sox"
+   
+   exit
+}
+fi
+
+# Check the input parameters
+_mix="no"
+_target_file=""
+
+if [[ $# -eq 0 ]]; then {
+    echo "${help_info}"
+    exit
+}
+fi
+
+while [ $# -gt 0 ]; do {
+    case $1 in 
+        -r|--read)
+            shift
+            _pcap_file=$1
+            
+            # Check whether the pcap file exist or not
+            if [[ ! -f $_pcap_file ]]; then {
+                echo "$_pcap_file doesn't exist."
+                exit
+            }
+            fi
+            
+            # Valid the input the pcap file
+            suffix=`echo $_pcap_file | awk -F "." '{print $NF}'`
+            if [[ $suffix != "pcap" ]]; then {
+                echo "The input file must be .pcap file."
+                exit
+            }
+            fi
+        ;;
+        -m|--mix)
+            _mix="yes"
+        ;;
+        -p|--path)
+            shift
+            # _target_file=`basename $_pcap_file .pcap`
+            _target_file=$1
+            
+            if [[ -z $_target_file ]]; then {
+                echo "The parameter path is null."
+                exit
+            } else {
+                mkdir -p $_target_file                
+                if [[ -d $_target_file ]]; then {
+                    cd $_target_file
+                    _target_file=`pwd`
+                    cd -
+                }
+                fi
+            }
+            fi
+        ;;
+        -h|--help)
+            echo "${help_info}"
+            exit
+        ;;
+        *)
+            echo "Invalid parameter: \"$1\""
+            echo
+            echo "${help_info}"
+            exit
+        ;;
+    esac
+    
+    # Get the next parameter
+    shift
+}
+done
+
+[ -z $_target_file ] && _target_file=`pwd`
+
+# Use 'tshark' to extract the two-way rtp.ssrc. Process respectively .
+for SSRC in `tshark -n -r $_pcap_file -o rtp.heuristic_rtp:TRUE -Y rtp -T fields -e rtp.ssrc -Eseparator=, 2>/dev/null | sort -u`; do {
+    
+    rm -rf $_target_file/$SSRC*
+    
+    # Use 'tshark' to extract the HEX value of rtp.payload to generate the raw file
+    tshark -n -r $_pcap_file -o rtp.heuristic_rtp:TRUE -Y rtp -Y "rtp.ssrc == $SSRC" -T fields -e rtp.payload 2>/dev/null | tr : '\n' > $_target_file/$SSRC.payloads 2>/dev/null
+    
+    if [[ `cat $_target_file/$SSRC.payloads` == "" ]]; then {
+        echo "No payload for SSRC:$SSRC"
+        continue
+    } 
+    fi
+    
+    # Generate the raw file
+    > $_target_file/$SSRC.raw
+    for HEX in `cat $_target_file/$SSRC.payloads`; do {
+        printf "\\x$HEX" >> $_target_file/$SSRC.raw
+    }
+    done
+
+    # Use 'sox' to convert the raw file to wav file
+    echo "Generate $_target_file/$SSRC.wav ..."
+    sox -t raw -r 8000 -c 1 -e mu-law $_target_file/$SSRC.raw $_target_file/$SSRC.wav  2>/dev/null
+    if [ -z $A ]; then {
+        A=$SSRC
+    } else {
+        B=$SSRC
+    }
+    fi
+}   
+done
+
+# Delete the temporary files
+rm -rf $_target_file/*.payloads $_target_file/*.raw
+
+# Use 'sox' to combine/mix the two-way voice into one wav file
+if [[ $_mix == "yes" ]]; then {
+    echo "Generate $_target_file/$A-$B.wav"
+    sox -mM $_target_file/$A.wav $_target_file/$B.wav $_target_file/$A-$B.wav 2>/dev/null
+}
+fi
+
+
