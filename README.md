@@ -31,4 +31,5 @@ EXAMPLES:
         
 Dependencies:
    apt-get install -y tshark sox
+   
    yum install wireshark sox
